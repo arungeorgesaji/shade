@@ -1,7 +1,0 @@
-.{
-    .name = .shade,
-    .version = "0.1.0",
-    .paths = .{""},
-    .dependencies = .{},
-    .fingerprint = 0xf39e288deee5b84e,
-}
