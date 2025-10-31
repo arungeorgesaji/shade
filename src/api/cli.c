@@ -97,8 +97,14 @@ static bool handle_create_table(CLIState* cli, char** args, int arg_count) {
     }
     
     const char* table_name = args[2];
-    
-    char* columns_str = args[3];
+
+    char columns_str_buf[512] = {0};
+    for (int i = 3; i < arg_count; i++) {
+        strcat(columns_str_buf, args[i]);
+        strcat(columns_str_buf, " ");
+    }
+
+    char* columns_str = columns_str_buf;
     ColumnSchema columns[32];
     int column_count = 0;
     
@@ -150,7 +156,13 @@ static bool handle_insert(CLIState* cli, char** args, int arg_count) {
         return false;
     }
     
-    char* values_str = args[4];
+    char values_str_buf[512] = {0};
+    for (int i = 4; i < arg_count; i++) {
+        strcat(values_str_buf, args[i]);
+        strcat(values_str_buf, " ");
+    }
+
+    char* values_str = values_str_buf;
     Value values[32];
     size_t value_count = 0;
     
@@ -267,7 +279,7 @@ static bool handle_delete(CLIState* cli, char** args, int arg_count) {
     }
     
     const char* table_name = args[2];
-    uint64_t id = atol(args[5]);
+    uint64_t id = atol(args[arg_count - 1]);
     
     bool success = execute_delete_simple(cli->storage, table_name, id);
     if (success) {
