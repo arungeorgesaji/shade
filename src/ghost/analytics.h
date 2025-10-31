@@ -31,6 +31,7 @@ typedef struct {
 GhostStats calculate_ghost_stats(MemoryTable* table);
 DatabaseGhostReport* generate_ghost_report(MemoryStorage* storage);
 void ghost_report_destroy(DatabaseGhostReport* report);
+void print_ghost_report(const DatabaseGhostReport* report);
 
 typedef struct {
     size_t resurrection_count;
