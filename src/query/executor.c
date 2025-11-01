@@ -140,8 +140,32 @@ static QueryResult* execute_delete_query(Query* query, QueryResult* result, Memo
     return result;
 }
 
+static QueryResult* execute_drop_table_query(MemoryStorage* storage, Query* query, QueryResult* result) {
+    bool success = memory_storage_drop_table(storage, query->table_name);
+    
+    if (success) {
+        result->count = 0;
+        return result;
+    } else {
+        free(result);
+        return NULL;
+    }
+}
+
 QueryResult* execute_query(MemoryStorage* storage, Query* query) {
     if (!storage || !query || !query->table_name) return NULL;
+
+    if (query->type == QUERY_DROP_TABLE) {
+        QueryResult* result = malloc(sizeof(QueryResult));
+        if (!result) return NULL;
+        
+        result->records = NULL;
+        result->count = 0;
+        result->ghost_count = 0;
+        result->exorcised_count = 0;
+        
+        return execute_drop_table_query(storage, query, result);
+    }
     
     MemoryTable* table = memory_storage_get_table(storage, query->table_name);
     if (!table) return NULL;
@@ -161,6 +185,9 @@ QueryResult* execute_query(MemoryStorage* storage, Query* query) {
             return execute_insert_query(query, result, table);
         case QUERY_DELETE:
             return execute_delete_query(query, result, table);
+        case QUERY_DROP_TABLE:
+            free(result);
+            return NULL;
         default:
             free(result);
             return NULL;

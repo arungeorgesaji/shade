@@ -157,3 +157,44 @@ DataRecord** memory_table_scan(MemoryTable* table, size_t* result_count) {
     *result_count = count;
     return results;
 }
+
+bool memory_storage_drop_table(MemoryStorage* storage, const char* name) {
+    if (!storage || !name) return false;
+    
+    size_t table_index = -1;
+    MemoryTable* table_to_drop = NULL;
+    
+    for (size_t i = 0; i < storage->table_count; i++) {
+        if (strcmp(storage->tables[i]->name, name) == 0) {
+            table_index = i;
+            table_to_drop = storage->tables[i];
+            break;
+        }
+    }
+    
+    if (table_index == (size_t)-1) {
+        return false; 
+    }
+    
+    if (table_to_drop) {
+        free(table_to_drop->name);
+        
+        for (size_t i = 0; i < table_to_drop->record_count; i++) {
+            datarecord_destroy(table_to_drop->records[i]);
+        }
+        free(table_to_drop->records);
+        
+        tableschema_destroy(table_to_drop->schema);
+        
+        free(table_to_drop);
+    }
+    
+    for (size_t i = table_index; i < storage->table_count - 1; i++) {
+        storage->tables[i] = storage->tables[i + 1];
+    }
+    
+    storage->table_count--;
+    
+    return true;
+}
+

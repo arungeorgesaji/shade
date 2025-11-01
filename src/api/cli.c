@@ -35,6 +35,7 @@ static void print_prompt() {
 static void print_help(void) {
     printf("Shade DB Commands:\n");
     printf("  CREATE TABLE <name> (<col1 type>, <col2 type>, ...) - Create table\n");
+    printf("  DROP TABLE <name>                                   - Remove table and all data\n");
     printf("  INSERT INTO <table> VALUES (<val1>, <val2>, ...)    - Insert data\n");
     printf("  SELECT * FROM <table>                               - Query all data\n");
     printf("  SELECT * FROM <table> WITH GHOSTS                   - Query including ghosts\n");
@@ -346,6 +347,24 @@ static bool handle_unknown(char** args) {
     return false;
 }
 
+static bool handle_drop_table(CLIState* cli, char** args, int arg_count) {
+    if (arg_count < 3) {
+        printf("Usage: DROP TABLE <name>\n");
+        return false;
+    }
+    
+    const char* table_name = args[2];
+    
+    bool success = execute_drop_table(cli->storage, table_name);
+    if (success) {
+        printf("Table '%s' dropped successfully\n", table_name);
+        return true;
+    } else {
+        printf("Error: Table '%s' not found or drop failed\n", table_name);
+        return false;
+    }
+}
+
 static bool execute_command(CLIState* cli, char** args, int arg_count) {
     if (arg_count == 0) return true;
     
@@ -354,37 +373,31 @@ static bool execute_command(CLIState* cli, char** args, int arg_count) {
     if (string_case_compare(command, "HELP") == 0) {
         print_help();
         return true;
-    }
-    else if (string_case_compare(command, "CREATE") == 0 && arg_count > 1 && 
-             string_case_compare(args[1], "TABLE") == 0) {
+    } else if (string_case_compare(command, "CREATE") == 0 && arg_count > 1 && 
+        string_case_compare(args[1], "TABLE") == 0) {
         return handle_create_table(cli, args, arg_count);
-    }
-    else if (string_case_compare(command, "INSERT") == 0 && arg_count > 1 && 
-             string_case_compare(args[1], "INTO") == 0) {
+    } else if (string_case_compare(command, "DROP") == 0 && arg_count > 1 && 
+        string_case_compare(args[1], "TABLE") == 0) {
+        return handle_drop_table(cli, args, arg_count);  
+    } else if (string_case_compare(command, "INSERT") == 0 && arg_count > 1 && 
+        string_case_compare(args[1], "INTO") == 0) {
         return handle_insert(cli, args, arg_count);
-    }
-    else if (string_case_compare(command, "SELECT") == 0) {
+    } else if (string_case_compare(command, "SELECT") == 0) {
         return handle_select(cli, args, arg_count);
-    }
-    else if (string_case_compare(command, "DELETE") == 0) {
+    } else if (string_case_compare(command, "DELETE") == 0) {
         return handle_delete(cli, args, arg_count);
-    }
-    else if (string_case_compare(command, "RESURRECT") == 0) {
+    } else if (string_case_compare(command, "RESURRECT") == 0) {
         return handle_resurrect(cli, args, arg_count);
-    }
-    else if (string_case_compare(command, "GHOST") == 0 && arg_count > 1 && 
-             string_case_compare(args[1], "STATS") == 0) {
+    } else if (string_case_compare(command, "GHOST") == 0 && arg_count > 1 && 
+        string_case_compare(args[1], "STATS") == 0) {
         return handle_ghost_stats(cli);
-    }
-    else if (string_case_compare(command, "DECAY") == 0 && arg_count > 1 && 
-             string_case_compare(args[1], "GHOSTS") == 0) {
+    } else if (string_case_compare(command, "DECAY") == 0 && arg_count > 1 && 
+        string_case_compare(args[1], "GHOSTS") == 0) {
         return handle_decay_ghosts(cli, args, arg_count);
-    }
-    else if (string_case_compare(command, "EXIT") == 0 || 
-             string_case_compare(command, "QUIT") == 0) {
+    } else if (string_case_compare(command, "EXIT") == 0 || 
+        string_case_compare(command, "QUIT") == 0) {
         return handle_exit(cli);
-    }
-    else {
+    } else {
         return handle_unknown(args);
     }
 }

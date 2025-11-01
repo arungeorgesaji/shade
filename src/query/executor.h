@@ -13,7 +13,8 @@ typedef enum {
     QUERY_SELECT,
     QUERY_INSERT,
     QUERY_DELETE,
-    QUERY_UPDATE
+    QUERY_UPDATE,
+    QUERY_DROP_TABLE
 } QueryType;
 
 typedef struct {
@@ -48,5 +49,6 @@ void queryresult_destroy(QueryResult* result);
 QueryResult* execute_select_all(MemoryStorage* storage, const char* table_name);
 QueryResult* execute_insert_simple(MemoryStorage* storage, const char* table_name, Value* values, size_t value_count);
 bool execute_delete_simple(MemoryStorage* storage, const char* table_name, uint64_t id);
+bool execute_drop_table(MemoryStorage* storage, const char* table_name);
 
 #endif
