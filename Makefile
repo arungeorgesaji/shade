@@ -1,5 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -g
+#CFLAGS = -Wall -Wextra -std=c99 -g -fsanitize=address
 SRC_DIR = src
 BUILD_DIR = build
 TEST_DIR = tests
@@ -29,11 +30,13 @@ $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+SOURCES_NO_MAIN = $(filter-out $(SRC_DIR)/main.c, $(SOURCES))
+
 test:
 ifdef TEST
 	@mkdir -p $(BUILD_DIR)/tests
 	@echo "Building and running test: $(TEST)"
-	$(CC) $(CFLAGS) -I$(SRC_DIR) $(TEST_DIR)/$(TEST).c $(SOURCES) -o $(BUILD_DIR)/tests/$(TEST)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) $(TEST_DIR)/$(TEST).c $(SOURCES_NO_MAIN) -o $(BUILD_DIR)/tests/$(TEST)
 	@echo "Running $(BUILD_DIR)/tests/$(TEST)..."
 	@$(BUILD_DIR)/tests/$(TEST)
 else

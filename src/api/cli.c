@@ -36,6 +36,7 @@ static void print_help(void) {
     printf("Shade DB Commands:\n");
     printf("  CREATE TABLE <name> (<col1 type>, <col2 type>, ...) - Create table\n");
     printf("  DROP TABLE <name>                                   - Remove table and all data\n");
+    printf("  DEBUG INFO                                          - Show memory usage info\n");
     printf("  INSERT INTO <table> VALUES (<val1>, <val2>, ...)    - Insert data\n");
     printf("  SELECT * FROM <table>                               - Query all data\n");
     printf("  SELECT * FROM <table> WITH GHOSTS                   - Query including ghosts\n");
@@ -365,6 +366,11 @@ static bool handle_drop_table(CLIState* cli, char** args, int arg_count) {
     }
 }
 
+static bool handle_debug_info(CLIState* cli) {
+    memory_storage_debug_info(cli->storage);
+    return true;
+}
+
 static bool execute_command(CLIState* cli, char** args, int arg_count) {
     if (arg_count == 0) return true;
     
@@ -373,6 +379,10 @@ static bool execute_command(CLIState* cli, char** args, int arg_count) {
     if (string_case_compare(command, "HELP") == 0) {
         print_help();
         return true;
+
+    } else if (string_case_compare(command, "DEBUG") == 0 && arg_count > 1 && 
+        string_case_compare(args[1], "INFO") == 0) {
+        return handle_debug_info(cli); 
     } else if (string_case_compare(command, "CREATE") == 0 && arg_count > 1 && 
         string_case_compare(args[1], "TABLE") == 0) {
         return handle_create_table(cli, args, arg_count);

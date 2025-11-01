@@ -5,17 +5,42 @@ struct ShadeDB {
     char* last_error;
 };
 
+struct ShadeGhostTableStats {
+    char* table_name;
+    size_t living_count;
+    size_t ghost_count; 
+    size_t exorcised_count;
+    float ghost_ratio;
+    float avg_ghost_strength;
+    size_t strongest_ghost_id;
+    float strongest_ghost_strength;
+    size_t weakest_ghost_id;
+    float weakest_ghost_strength;
+};
+
+struct ShadeGhostStatsResult {
+    size_t table_count;
+    size_t total_living;
+    size_t total_ghosts;
+    size_t total_exorcised;
+    float overall_ghost_ratio;
+    float overall_avg_strength;
+    struct ShadeGhostTableStats* table_stats;
+};
+
 struct ShadeQueryResult {
     QueryResult* internal_result;
     MemoryTable* table; 
     size_t current_row;
+    struct ShadeGhostStatsResult* ghost_stats;  
+    bool is_ghost_stats;                 
 };
 
 static char* last_error = NULL;
 
 static void set_error(const char* message) {
     if (last_error) free(last_error);
-    last_error = message ? strdup(message) : NULL;
+    last_error = message ? string_duplicate(message) : NULL;
 }
 
 static ValueType string_to_type(const char* type_str) {
@@ -24,6 +49,17 @@ static ValueType string_to_type(const char* type_str) {
     if (strcmp(type_str, "BOOL") == 0) return VALUE_BOOLEAN;
     if (strcmp(type_str, "STRING") == 0) return VALUE_STRING;
     return VALUE_NULL;
+}
+
+static const char* type_to_string(ValueType type) {
+    switch (type) {
+        case VALUE_INTEGER: return "INT";
+        case VALUE_FLOAT: return "FLOAT";
+        case VALUE_BOOLEAN: return "BOOL";
+        case VALUE_STRING: return "STRING";
+        case VALUE_NULL: return "NULL";
+        default: return "UNKNOWN";
+    }
 }
 
 static Value value_from_void(const void* value, ValueType type) {
@@ -94,11 +130,6 @@ ShadeTable* shade_create_table(ShadeDB* db, const char* name,
     }
     
     TableSchema* schema = tableschema_create(name, columns, column_count);
-    
-    for (size_t i = 0; i < column_count; i++) {
-        free((char*)columns[i].name);
-    }
-    free(columns);
     
     if (!schema) {
         set_error("Failed to create table schema");
@@ -201,6 +232,9 @@ ShadeQueryResult* shade_select(ShadeDB* db, const char* table_name,
     result->internal_result = internal_result;
     result->table = memory_storage_get_table(db->storage, table_name);
     result->current_row = 0;
+
+    result->is_ghost_stats = false;
+    result->ghost_stats = NULL;
     
     return result;
 }
@@ -255,17 +289,127 @@ ShadeQueryResult* shade_get_ghost_stats(ShadeDB* db) {
         return NULL;
     }
     
-    print_ghost_report(report);
-    ghost_report_destroy(report);
-    
     ShadeQueryResult* result = malloc(sizeof(ShadeQueryResult));
-    if (result) {
-        result->internal_result = NULL;
-        result->table = NULL;
-        result->current_row = 0;
+    if (!result) {
+        ghost_report_destroy(report);
+        set_error("Memory allocation failed");
+        return NULL;
     }
     
+    result->internal_result = NULL;
+    result->table = NULL;
+    result->current_row = 0;
+    result->is_ghost_stats = true;
+    
+    result->ghost_stats = malloc(sizeof(ShadeGhostStatsResult));
+    if (!result->ghost_stats) {
+        ghost_report_destroy(report);
+        free(result);
+        set_error("Memory allocation failed");
+        return NULL;
+    }
+    
+    result->ghost_stats->table_count = report->table_count;
+    result->ghost_stats->total_living = report->overall.total_living;
+    result->ghost_stats->total_ghosts = report->overall.total_ghosts;
+    result->ghost_stats->total_exorcised = report->overall.total_exorcised;
+    result->ghost_stats->overall_ghost_ratio = report->overall.ghost_ratio;
+    result->ghost_stats->overall_avg_strength = report->overall.avg_ghost_strength;
+    
+    if (report->table_count > 0) {
+        result->ghost_stats->table_stats = malloc(sizeof(ShadeGhostTableStats) * report->table_count);
+        if (!result->ghost_stats->table_stats) {
+            ghost_report_destroy(report);
+            free(result->ghost_stats);
+            free(result);
+            set_error("Memory allocation failed");
+            return NULL;
+        }
+        
+        for (size_t i = 0; i < report->table_count; i++) {
+            TableGhostStats* src = &report->table_stats[i];
+            ShadeGhostTableStats* dest = &result->ghost_stats->table_stats[i];
+            
+            dest->table_name = string_duplicate(src->table_name);
+            dest->living_count = src->stats.total_living;
+            dest->ghost_count = src->stats.total_ghosts;
+            dest->exorcised_count = src->stats.total_exorcised;
+            dest->ghost_ratio = src->stats.ghost_ratio;
+            dest->avg_ghost_strength = src->stats.avg_ghost_strength;
+            dest->strongest_ghost_id = src->stats.strongest_ghost_id;
+            dest->strongest_ghost_strength = src->stats.strongest_ghost_strength;
+            dest->weakest_ghost_id = src->stats.weakest_ghost_id;
+            dest->weakest_ghost_strength = src->stats.weakest_ghost_strength;
+        }
+    } else {
+        result->ghost_stats->table_stats = NULL;
+    }
+    
+    ghost_report_destroy(report);
+    
     return result;
+}
+
+size_t shade_ghost_stats_table_count(ShadeQueryResult* result) {
+    if (!result || !result->is_ghost_stats || !result->ghost_stats) return 0;
+    return result->ghost_stats->table_count;
+}
+
+const char* shade_ghost_stats_table_name(ShadeQueryResult* result, size_t table_index) {
+    if (!result || !result->is_ghost_stats || !result->ghost_stats) return NULL;
+    if (table_index >= result->ghost_stats->table_count) return NULL;
+    return result->ghost_stats->table_stats[table_index].table_name;
+}
+
+bool shade_ghost_stats_get_table_stats(ShadeQueryResult* result, size_t table_index,
+                                      size_t* living_count, size_t* ghost_count,
+                                      size_t* exorcised_count, float* ghost_ratio,
+                                      float* avg_strength) {
+    if (!result || !result->is_ghost_stats || !result->ghost_stats) return false;
+    if (table_index >= result->ghost_stats->table_count) return false;
+    
+    ShadeGhostTableStats* stats = &result->ghost_stats->table_stats[table_index];
+    
+    if (living_count) *living_count = stats->living_count;
+    if (ghost_count) *ghost_count = stats->ghost_count;
+    if (exorcised_count) *exorcised_count = stats->exorcised_count;
+    if (ghost_ratio) *ghost_ratio = stats->ghost_ratio;
+    if (avg_strength) *avg_strength = stats->avg_ghost_strength;
+    
+    return true;
+}
+
+bool shade_ghost_stats_get_strength_info(ShadeQueryResult* result, size_t table_index,
+                                        size_t* strongest_id, float* strongest_strength,
+                                        size_t* weakest_id, float* weakest_strength) {
+    if (!result || !result->is_ghost_stats || !result->ghost_stats) return false;
+    if (table_index >= result->ghost_stats->table_count) return false;
+    
+    ShadeGhostTableStats* stats = &result->ghost_stats->table_stats[table_index];
+    
+    if (strongest_id) *strongest_id = stats->strongest_ghost_id;
+    if (strongest_strength) *strongest_strength = stats->strongest_ghost_strength;
+    if (weakest_id) *weakest_id = stats->weakest_ghost_id;
+    if (weakest_strength) *weakest_strength = stats->weakest_ghost_strength;
+    
+    return true;
+}
+
+bool shade_ghost_stats_get_overall(ShadeQueryResult* result,
+                                  size_t* total_living, size_t* total_ghosts,
+                                  size_t* total_exorcised, float* overall_ratio,
+                                  float* overall_avg_strength) {
+    if (!result || !result->is_ghost_stats || !result->ghost_stats) return false;
+    
+    struct ShadeGhostStatsResult* stats = result->ghost_stats;
+    
+    if (total_living) *total_living = stats->total_living;
+    if (total_ghosts) *total_ghosts = stats->total_ghosts;
+    if (total_exorcised) *total_exorcised = stats->total_exorcised;
+    if (overall_ratio) *overall_ratio = stats->overall_ghost_ratio;
+    if (overall_avg_strength) *overall_avg_strength = stats->overall_avg_strength;
+    
+    return true;
 }
 
 size_t shade_result_count(ShadeQueryResult* result) {
@@ -273,26 +417,67 @@ size_t shade_result_count(ShadeQueryResult* result) {
     return result->internal_result->count;
 }
 
-void* shade_get_value(ShadeQueryResult* result, size_t row, size_t col) {
+size_t shade_result_column_count(ShadeQueryResult* result) {
+    if (!result || !result->table) return 0;
+    return result->table->schema->column_count;
+}
+
+const char* shade_result_column_name(ShadeQueryResult* result, size_t col) {
+    if (!result || !result->table) return NULL;
+    if (col >= result->table->schema->column_count) return NULL;
+    return result->table->schema->columns[col].name;
+}
+
+const char* shade_result_column_type(ShadeQueryResult* result, size_t col) {
+    if (!result || !result->table) return NULL;
+    if (col >= result->table->schema->column_count) return NULL;
+    return type_to_string(result->table->schema->columns[col].type);
+}
+
+static Value* get_value_checked(ShadeQueryResult* result, size_t row, size_t col) {
     if (!result || !result->internal_result || !result->table) return NULL;
     if (row >= result->internal_result->count) return NULL;
     if (col >= result->table->schema->column_count) return NULL;
     
     DataRecord* record = result->internal_result->records[row];
-    Value* value = &record->values[col];
+    return &record->values[col];
+}
+
+bool shade_get_int(ShadeQueryResult* result, size_t row, size_t col, int64_t* out_value) {
+    Value* value = get_value_checked(result, row, col);
+    if (!value || value->type != VALUE_INTEGER) return false;
     
-    switch (value->type) {
-        case VALUE_INTEGER:
-            return (void*)(intptr_t)value->data.integer;
-        case VALUE_FLOAT:
-            return NULL;
-        case VALUE_BOOLEAN:
-            return (void*)(intptr_t)value->data.boolean;
-        case VALUE_STRING:
-            return (void*)value->data.string;
-        default:
-            return NULL;
-    }
+    if (out_value) *out_value = value->data.integer;
+    return true;
+}
+
+bool shade_get_float(ShadeQueryResult* result, size_t row, size_t col, double* out_value) {
+    Value* value = get_value_checked(result, row, col);
+    if (!value || value->type != VALUE_FLOAT) return false;
+    
+    if (out_value) *out_value = value->data.float_val;
+    return true;
+}
+
+bool shade_get_bool(ShadeQueryResult* result, size_t row, size_t col, bool* out_value) {
+    Value* value = get_value_checked(result, row, col);
+    if (!value || value->type != VALUE_BOOLEAN) return false;
+    
+    if (out_value) *out_value = value->data.boolean;
+    return true;
+}
+
+bool shade_get_string(ShadeQueryResult* result, size_t row, size_t col, const char** out_value) {
+    Value* value = get_value_checked(result, row, col);
+    if (!value || value->type != VALUE_STRING) return false;
+    
+    if (out_value) *out_value = value->data.string;
+    return true;
+}
+
+bool shade_is_null(ShadeQueryResult* result, size_t row, size_t col) {
+    Value* value = get_value_checked(result, row, col);
+    return value && value->type == VALUE_NULL;
 }
 
 void shade_free_result(ShadeQueryResult* result) {
@@ -301,6 +486,17 @@ void shade_free_result(ShadeQueryResult* result) {
     if (result->internal_result) {
         queryresult_destroy(result->internal_result);
     }
+    
+    if (result->is_ghost_stats && result->ghost_stats) {
+        if (result->ghost_stats->table_stats) {
+            for (size_t i = 0; i < result->ghost_stats->table_count; i++) {
+                free(result->ghost_stats->table_stats[i].table_name);
+            }
+            free(result->ghost_stats->table_stats);
+        }
+        free(result->ghost_stats);
+    }
+    
     free(result);
 }
 

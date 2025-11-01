@@ -240,3 +240,16 @@ bool execute_delete_simple(MemoryStorage* storage, const char* table_name, uint6
     
     return success;
 }
+
+bool execute_drop_table(MemoryStorage* storage, const char* table_name) {
+    Query* query = query_create(QUERY_DROP_TABLE, table_name);
+    if (!query) return false;
+    
+    QueryResult* result = execute_query(storage, query);
+    bool success = (result != NULL);
+    
+    if (result) queryresult_destroy(result);
+    query_destroy(query);
+    
+    return success;
+}

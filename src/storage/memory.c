@@ -194,7 +194,59 @@ bool memory_storage_drop_table(MemoryStorage* storage, const char* name) {
     }
     
     storage->table_count--;
+
+    if (storage->capacity > INITIAL_CAPACITY && 
+        storage->table_count * 4 <= storage->capacity) {
+        
+        size_t new_capacity = storage->capacity / GROWTH_FACTOR;
+        if (new_capacity < INITIAL_CAPACITY) {
+            new_capacity = INITIAL_CAPACITY;
+        }
+        
+        MemoryTable** new_tables = realloc(storage->tables, 
+                                         sizeof(MemoryTable*) * new_capacity);
+        if (new_tables) {
+            size_t old_capacity = storage->capacity;
+            storage->tables = new_tables;
+            storage->capacity = new_capacity;
+            printf("Debug: Shrunk table array from %zu to %zu capacity\n", old_capacity, new_capacity);
+        }
+    }
     
     return true;
 }
 
+void memory_storage_debug_info(const MemoryStorage* storage) {
+    if (!storage) {
+        printf("Storage: NULL\n");
+        return;
+    }
+    
+    printf("Storage Debug Info:\n");
+    printf("  Tables: %zu / %zu (%.1f%% usage)\n", 
+           storage->table_count, storage->capacity,
+           (double)storage->table_count / storage->capacity * 100);
+    
+    size_t total_records = 0;
+    size_t total_memory_estimate = 0;
+    
+    for (size_t i = 0; i < storage->table_count; i++) {
+        MemoryTable* table = storage->tables[i];
+        printf("  Table '%s': %zu records, capacity: %zu\n",
+               table->name, table->record_count, table->capacity);
+        total_records += table->record_count;
+        
+        total_memory_estimate += sizeof(MemoryTable) + 
+                                strlen(table->name) + 1 +
+                                sizeof(DataRecord*) * table->capacity;
+        
+        for (size_t j = 0; j < table->record_count; j++) {
+            DataRecord* record = table->records[j];
+            total_memory_estimate += sizeof(DataRecord) + 
+                                   sizeof(Value) * record->value_count;
+        }
+    }
+    
+    printf("  Total records: %zu\n", total_records);
+    printf("  Estimated memory: ~%zu bytes\n", total_memory_estimate);
+}

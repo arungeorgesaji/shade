@@ -34,6 +34,7 @@ uint64_t memory_table_insert(MemoryTable* table, const Value* values);
 DataRecord* memory_table_get(MemoryTable* table, uint64_t id);
 bool memory_table_update(MemoryTable* table, uint64_t id, const Value* values);
 bool memory_table_delete(MemoryTable* table, uint64_t id, int64_t timestamp);
+void memory_storage_debug_info(const MemoryStorage* storage);
 
 DataRecord** memory_table_scan(MemoryTable* table, size_t* result_count);
 DataRecord** memory_table_find_ghosts(MemoryTable* table, size_t* result_count);
