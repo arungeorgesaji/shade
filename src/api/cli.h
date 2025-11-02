@@ -16,9 +16,12 @@ typedef struct {
     MemoryStorage* storage;
     bool running;
     char* current_database;
+    char* data_directory;  
+    bool persistence_enabled;
 } CLIState;
 
 CLIState* cli_create(void);
+CLIState* cli_create_with_persistence(const char* data_dir);
 void cli_destroy(CLIState* cli);
 
 void cli_run(CLIState* cli);

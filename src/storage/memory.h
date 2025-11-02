@@ -57,5 +57,6 @@ bool memory_storage_flush(MemoryStorage* storage);
 
 void memory_storage_debug_info(const MemoryStorage* storage);
 void memory_table_debug_info(const MemoryTable* table);
+bool btree_flush(BTree* tree);
 
 #endif 

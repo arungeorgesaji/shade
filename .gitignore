@@ -2,3 +2,4 @@ todo
 build/
 temp/
 test_persist/
+data/

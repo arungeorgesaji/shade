@@ -4,14 +4,28 @@
 #define MAX_ARGS 32
 
 CLIState* cli_create(void) {
+    return cli_create_with_persistence(NULL);
+}
+
+CLIState* cli_create_with_persistence(const char* data_dir) {
     CLIState* cli = malloc(sizeof(CLIState));
     if (!cli) return NULL;
     
-    cli->storage = memory_storage_create();
+    if (data_dir) {
+        cli->storage = memory_storage_load(data_dir);
+        cli->data_directory = string_duplicate(data_dir);
+        cli->persistence_enabled = true;
+    } else {
+        cli->storage = memory_storage_create();
+        cli->data_directory = NULL;
+        cli->persistence_enabled = false;
+    }
+    
     cli->running = true;
     cli->current_database = NULL;
     
     if (!cli->storage) {
+        free(cli->data_directory);
         free(cli);
         return NULL;
     }
@@ -22,8 +36,13 @@ CLIState* cli_create(void) {
 void cli_destroy(CLIState* cli) {
     if (!cli) return;
     
+    if (cli->persistence_enabled) {
+        memory_storage_save(cli->storage);  
+    }
+    
     memory_storage_destroy(cli->storage);
     free(cli->current_database);
+    free(cli->data_directory);
     free(cli);
 }
 
@@ -34,21 +53,27 @@ static void print_prompt() {
 
 static void print_help(void) {
     printf("Shade DB Commands:\n");
-    printf("  CREATE TABLE <name> (<col1 type>, <col2 type>, ...) - Create table\n");
-    printf("  DROP TABLE <name>                                   - Remove table and all data\n");
-    printf("  DEBUG INFO                                          - Show memory usage info\n");
-    printf("  INSERT INTO <table> VALUES (<val1>, <val2>, ...)    - Insert data\n");
-    printf("  SELECT * FROM <table>                               - Query all data\n");
-    printf("  SELECT * FROM <table> WITH GHOSTS                   - Query including ghosts\n");
-    printf("  DELETE FROM <table> WHERE id = <id>                 - Delete record (creates ghost)\n");
-    printf("  RESURRECT <table> <id>                              - Bring ghost back to life\n");
-    printf("  GHOST STATS                                         - Show ghost analytics\n");
-    printf("  DECAY GHOSTS <amount>                               - Weaken all ghosts\n");
-    printf("  HELP                                                - Show this help\n");
-    printf("  EXIT                                                - Exit database\n");
+    printf("  USE <database_path>                                - (Not implemented yet completely)\n");
+    printf("  ENABLE PERSISTENCE <data_dir>                      - (Not implemented yet completely)\n");
+    printf("  SAVE                                               - (Not implemented yet completely)\n");
+    printf("  CREATE TABLE <name> (<col1 type>, ...)             - Create a new table\n");
+    printf("  DROP TABLE <name>                                  - Remove a table\n");
+    printf("  DEBUG INFO                                         - Show memory usage info\n");
+    printf("  INSERT INTO <table> VALUES (<val1>, ...)           - Insert a new record\n");
+    printf("  SELECT * FROM <table>                              - Query all data\n");
+    printf("  SELECT * FROM <table> WITH GHOSTS                  - Query including ghosts\n");
+    printf("  DELETE FROM <table> WHERE id = <id>                - Delete record\n");
+    printf("  RESURRECT <table> <id>                             - Bring ghost back to life\n");
+    printf("  GHOST STATS                                        - Show ghost analytics\n");
+    printf("  DECAY GHOSTS <amount>                              - Weaken all ghosts\n");
+    printf("  HELP                                               - Show this help message\n");
+    printf("  EXIT                                               - Exit Shade DB\n");
     printf("\n");
     printf("Data types: INT, FLOAT, BOOL, STRING\n");
     printf("Example: CREATE TABLE users (id INT, name STRING, age INT)\n");
+    printf("\n");
+    printf("Persistence:\n");
+    printf("  (Persistence-related commands are not implemented yet completely.)\n");
 }
 
 static ValueType parse_type(const char* type_str) {
@@ -371,15 +396,91 @@ static bool handle_debug_info(CLIState* cli) {
     return true;
 }
 
+static bool handle_use_database(CLIState* cli, char** args, int arg_count) {
+    if (arg_count < 2) {
+        printf("Usage: USE <database_path>\n");
+        return false;
+    }
+    
+    const char* db_path = args[1];
+    
+    if (cli->persistence_enabled) {
+        memory_storage_save(cli->storage);
+    }
+    
+    memory_storage_destroy(cli->storage);
+    
+    cli->storage = memory_storage_load(db_path);
+    if (!cli->storage) {
+        printf("Error: Failed to open database '%s'\n", db_path);
+        cli->storage = memory_storage_create(); 
+        cli->persistence_enabled = false;
+        free(cli->data_directory);
+        cli->data_directory = NULL;
+        return false;
+    }
+    
+    free(cli->data_directory);
+    cli->data_directory = string_duplicate(db_path);
+    cli->persistence_enabled = true;
+    
+    printf("Using database: %s\n", db_path);
+    return true;
+}
+
+static bool handle_save(CLIState* cli) {
+    if (!cli->persistence_enabled) {
+        printf("Error: No persistent database in use\n");
+        return false;
+    }
+    
+    bool success = memory_storage_save(cli->storage);
+    if (success) {
+        printf("Database saved to: %s\n", cli->data_directory);
+    } else {
+        printf("Error: Failed to save database\n");
+    }
+    return success;
+}
+
+static bool handle_enable_persistence(CLIState* cli, char** args, int arg_count) {
+    if (arg_count < 2) {
+        printf("Usage: ENABLE PERSISTENCE <data_directory>\n");
+        return false;
+    }
+    
+    const char* data_dir = args[2];
+    
+    if (cli->persistence_enabled) {
+        printf("Persistence already enabled for: %s\n", cli->data_directory);
+        return true;
+    }
+    
+    bool success = memory_storage_enable_persistence(cli->storage, data_dir);
+    if (success) {
+        cli->persistence_enabled = true;
+        cli->data_directory = string_duplicate(data_dir);
+        printf("Persistence enabled. Data directory: %s\n", data_dir);
+    } else {
+        printf("Error: Failed to enable persistence\n");
+    }
+    return success;
+}
+
 static bool execute_command(CLIState* cli, char** args, int arg_count) {
     if (arg_count == 0) return true;
     
     char* command = args[0];
-    
-    if (string_case_compare(command, "HELP") == 0) {
+
+    if (string_case_compare(command, "USE") == 0) {
+        return handle_use_database(cli, args, arg_count);
+    } else if (string_case_compare(command, "SAVE") == 0) {
+        return handle_save(cli);
+    } else if (string_case_compare(command, "ENABLE") == 0 && arg_count > 1 && string_case_compare(args[1], "PERSISTENCE") == 0) {
+        return handle_enable_persistence(cli, args, arg_count);
+    } else if (string_case_compare(command, "HELP") == 0) {
         print_help();
         return true;
-
     } else if (string_case_compare(command, "DEBUG") == 0 && arg_count > 1 && 
         string_case_compare(args[1], "INFO") == 0) {
         return handle_debug_info(cli); 
