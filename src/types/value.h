@@ -34,6 +34,7 @@ Value value_null(void);
 bool value_equals(const Value* a, const Value* b);
 void value_destroy(Value* value);
 Value value_clone(const Value* value);
+int value_compare(const Value* a, const Value* b);
 
 const char* value_type_to_string(ValueType type);
 

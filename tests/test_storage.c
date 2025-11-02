@@ -260,6 +260,283 @@ void test_storage_scalability() {
     printf("Storage scalability tests passed\n");
 }
 
+void test_btree_persistence() {
+    printf("Testing B-tree persistence...\n");
+    
+    const char* filename = "test_persistence.btree";
+    
+    BTree* tree = btree_create(filename, 3);
+    assert(tree != NULL);
+    
+    Value key1 = value_integer(42);
+    Value key2 = value_integer(15);
+    Value key3 = value_integer(77);
+    
+    printf("  Inserting keys...\n");
+    assert(btree_insert(tree, &key1, 1001));
+    assert(btree_insert(tree, &key2, 1002));
+    assert(btree_insert(tree, &key3, 1003));
+    
+    printf("  Validating tree...\n");
+    assert(btree_validate(tree));
+    
+    printf("  Closing and reopening tree...\n");
+    btree_close(tree);
+    
+    tree = btree_open(filename);
+    assert(tree != NULL);
+    assert(btree_validate(tree));
+    
+    uint64_t* results = NULL;
+    uint32_t count = 0;
+    
+    printf("  Searching for key 42...\n");
+    bool found = btree_search(tree, &key1, &results, &count);
+    printf("  Search result: found=%d, count=%u\n", found, count);
+    
+    assert(found);
+    assert(count == 1);
+    assert(results[0] == 1001);
+    btree_free_results(results);
+    
+    value_destroy(&key1);
+    value_destroy(&key2);
+    value_destroy(&key3);
+    
+    btree_close(tree);
+    remove(filename);
+    
+    printf("B-tree persistence tests passed\n");
+}
+
+void test_btree_large_dataset() {
+    printf("Testing B-tree with large dataset...\n");
+    
+    const char* filename = "test_large.btree";
+    BTree* tree = btree_create(filename, 4);
+    assert(tree != NULL);
+    
+    for (int i = 0; i < 100; i++) {
+        Value key = value_integer(i * 2);
+        bool insert_result = btree_insert(tree, &key, 1000 + i);
+        if (!insert_result) {
+            printf("Failed to insert key %d\n", i * 2);
+            assert(insert_result);
+        }
+        value_destroy(&key);
+    }
+    
+    for (int i = 0; i < 100; i++) {
+        Value key = value_integer(i * 2);
+        uint64_t* results = NULL;
+        uint32_t count = 0;
+        
+        bool search_result = btree_search(tree, &key, &results, &count);
+        if (!search_result) {
+            printf("Failed to find key %d\n", i * 2);
+            assert(search_result);
+        }
+        assert(count == 1);
+        assert(results[0] == (uint64_t)(1000 + i));
+        
+        btree_free_results(results);
+        value_destroy(&key);
+    }
+    
+    uint32_t count = 0;
+    uint64_t* all_results = btree_scan_all(tree, &count);
+    assert(all_results != NULL);
+    assert(count == 100);
+    btree_free_results(all_results);
+    
+    uint32_t height = btree_get_height(tree);
+    assert(height > 0 && height < 10);
+    
+    btree_close(tree);
+    remove(filename);
+    
+    printf("B-tree large dataset tests passed\n");
+}
+
+void test_btree_node_splitting() {
+    printf("Testing B-tree node splitting...\n");
+    
+    const char* filename = "test_splitting.btree";
+    BTree* tree = btree_create(filename, 3); 
+    
+    for (int i = 0; i < 10; i++) {
+        Value key = value_integer(i);
+        assert(btree_insert(tree, &key, 2000 + i));
+        value_destroy(&key);
+    }
+    
+    for (int i = 0; i < 10; i++) {
+        Value key = value_integer(i);
+        uint64_t* results = NULL;
+        uint32_t count = 0;
+        
+        assert(btree_search(tree, &key, &results, &count));
+        assert(count == 1);
+        assert(results[0] == (uint64_t)(2000 + i));
+        
+        btree_free_results(results);
+        value_destroy(&key);
+    }
+    
+    assert(btree_validate(tree));
+    
+    uint32_t height = btree_get_height(tree);
+    assert(height >= 2);
+    
+    btree_close(tree);
+    remove(filename);
+    
+    printf("B-tree node splitting tests passed\n");
+}
+
+void test_btree_integration() {
+    printf("Testing B-tree integration with memory storage...\n");
+    
+    MemoryStorage* storage = memory_storage_create();
+    assert(storage != NULL);
+    
+    assert(memory_storage_enable_persistence(storage, "test_data"));
+    
+    ColumnSchema columns[] = {
+        column_create("id", VALUE_INTEGER),
+        column_create("name", VALUE_STRING),
+        column_create("age", VALUE_INTEGER)
+    };
+    TableSchema* schema = tableschema_create("users", columns, 3);
+    MemoryTable* table = memory_storage_create_table(storage, "users", schema);
+    assert(table != NULL);
+    assert(table->primary_index != NULL);
+    
+    Value values1[] = { value_integer(100), value_string("Alice"), value_integer(30) };
+    Value values2[] = { value_integer(200), value_string("Bob"), value_integer(25) };
+    
+    uint64_t id1 = memory_table_insert(table, values1);
+    uint64_t id2 = memory_table_insert(table, values2);
+    assert(id1 == 1);
+    assert(id2 == 2);
+    
+    uint32_t scan_count = 0;
+    uint64_t* all_keys = btree_scan_all(table->primary_index, &scan_count);
+    printf("Debug: Found %u keys in B-tree: ", scan_count);
+    for (uint32_t i = 0; i < scan_count; i++) {
+        printf("%lu ", all_keys[i]);
+    }
+    printf("\n");
+    if (all_keys) btree_free_results(all_keys);
+    
+    Value key100 = value_integer(100);
+    DataRecord* record = memory_table_get_by_key(table, &key100, 0);
+    assert(record != NULL);
+    assert(record->id == 1);
+    
+    Value key200 = value_integer(200);
+    record = memory_table_get_by_key(table, &key200, 0);
+    assert(record != NULL);
+    assert(record->id == 2);
+    
+    BTreeRange range = {
+        .start_key = value_integer(150),
+        .end_key = value_integer(250),
+        .include_start = true,
+        .include_end = true
+    };
+    
+    uint32_t range_count = 0;
+    uint64_t* range_results = memory_table_range_query(table, &range, 0, &range_count);
+    
+    printf("Debug: Range query found %u results: ", range_count);
+    for (uint32_t i = 0; i < range_count; i++) {
+        printf("%lu ", range_results[i]);
+    }
+    printf("\n");
+    
+    assert(range_results != NULL);
+    assert(range_count == 1);
+    assert(range_results[0] == 2); 
+    btree_free_results(range_results);
+    
+    value_destroy(&key100);
+    value_destroy(&key200);
+    value_destroy(&range.start_key);
+    value_destroy(&range.end_key);
+    value_destroy(&values1[1]);
+    value_destroy(&values2[1]);
+    
+    memory_storage_destroy(storage);
+    
+    remove("test_data/users.btree");
+    rmdir("test_data");
+    
+    for (int i = 0; i < 3; i++) {
+        free((char*)columns[i].name);
+    }
+    
+    printf("B-tree integration tests passed\n");
+}
+
+void test_persistence_lifecycle() {
+    printf("Testing persistence lifecycle...\n");
+    
+    const char* data_dir = "test_persist";
+    
+    MemoryStorage* storage1 = memory_storage_create();
+    assert(memory_storage_enable_persistence(storage1, data_dir));
+    
+    ColumnSchema cols[] = { column_create("id", VALUE_INTEGER) };
+    TableSchema* schema = tableschema_create("data", cols, 1);
+    MemoryTable* table = memory_storage_create_table(storage1, "data", schema);
+    
+    for (int i = 0; i < 5; i++) {
+        Value values[] = { value_integer(i * 10) };
+        memory_table_insert(table, values);
+    }
+    
+    assert(memory_storage_save(storage1));
+    memory_storage_destroy(storage1);
+    
+    MemoryStorage* storage2 = memory_storage_load(data_dir);
+    assert(storage2 != NULL);
+    assert(storage2->persistence_enabled);
+    
+    memory_storage_destroy(storage2);
+    
+    for (int i = 0; i < 1; i++) {
+        free((char*)cols[i].name);
+    }
+    
+    printf("Persistence lifecycle tests passed\n");
+}
+
+void test_btree_creation() {
+    printf("Testing B-tree creation...\n");
+    BTree* tree = btree_create("test_creation.btree", 3);
+    assert(tree != NULL);
+    btree_close(tree);
+    remove("test_creation.btree");
+    printf("B-tree creation test passed\n");
+}
+
+void test_btree_insert_search() {
+    printf("Testing B-tree insert/search...\n");
+    BTree* tree = btree_create("test_insert.btree", 3);
+    Value key = value_integer(42);
+    assert(btree_insert(tree, &key, 999));
+    uint64_t* results = NULL;
+    uint32_t count = 0;
+    assert(btree_search(tree, &key, &results, &count));
+    assert(count == 1 && results[0] == 999);
+    btree_free_results(results);
+    value_destroy(&key);
+    btree_close(tree);
+    remove("test_insert.btree");
+    printf("B-tree insert/search test passed\n");
+}
+
 int main() {
     printf("=== Shade Database Storage Tests ===\n\n");
     
@@ -269,6 +546,15 @@ int main() {
     test_data_operations();
     test_ghost_operations();
     test_storage_scalability();
+
+    test_btree_creation();
+    test_btree_insert_search();
+    test_btree_persistence();
+    test_btree_large_dataset();
+    test_btree_node_splitting();
+
+    test_btree_integration();
+    test_persistence_lifecycle();
     
     printf("\nAll storage tests passed!\n");
     return 0;

@@ -79,6 +79,25 @@ Value value_clone(const Value* value) {
     return result;
 }
 
+int value_compare(const Value* a, const Value* b) {
+    if (a->type != b->type)
+        return (int)a->type - (int)b->type;  
+
+    switch (a->type) {
+        case VALUE_INTEGER:
+            return (a->data.integer > b->data.integer) - (a->data.integer < b->data.integer);
+        case VALUE_FLOAT:
+            return (a->data.float_val > b->data.float_val) - (a->data.float_val < b->data.float_val);
+        case VALUE_BOOLEAN:
+            return (int)a->data.boolean - (int)b->data.boolean;
+        case VALUE_STRING:
+            return strcmp(a->data.string, b->data.string);
+        case VALUE_NULL:
+            return 0;
+    }
+    return 0;
+}
+
 const char* value_type_to_string(ValueType type) {
     switch (type) {
         case VALUE_INTEGER: return "INTEGER";
