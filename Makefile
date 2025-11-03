@@ -24,7 +24,7 @@ all: $(BUILD_DIR)/$(TARGET)
 
 $(BUILD_DIR)/$(TARGET): $(OBJECTS)
 	@mkdir -p $(@D)
-	$(CC) $(OBJECTS) -o $@
+	$(CC) $(CFLAGS) -static $(OBJECTS) -o $@
 
 $(BUILD_DIR)/%.o: %.c
 	@mkdir -p $(@D)
