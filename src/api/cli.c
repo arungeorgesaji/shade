@@ -319,7 +319,7 @@ static bool handle_delete(CLIState* cli, char** args, int arg_count) {
 }
 
 static bool handle_resurrect(CLIState* cli, char** args, int arg_count) {
-    if (arg_count < 4) {
+    if (arg_count < 3) {
         printf("Usage: RESURRECT <table> <id>\n");
         return false;
     }

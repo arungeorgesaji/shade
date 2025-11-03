@@ -5,6 +5,7 @@
 #define DEFAULT_BTREE_ORDER 4
 
 static int get_primary_key_column(TableSchema* schema) {
+    (void)schema;
     return 0;
 }
 
@@ -230,6 +231,7 @@ DataRecord* memory_table_get(MemoryTable* table, uint64_t id) {
 }
 
 DataRecord* memory_table_get_by_key(MemoryTable* table, const Value* key, uint32_t key_column) {
+    (void)key_column;
     if (!table || !key || !table->primary_index) return NULL;
     
     uint64_t* record_ids = NULL;
@@ -325,6 +327,7 @@ DataRecord** memory_table_find_ghosts(MemoryTable* table, size_t* result_count) 
 }
 
 uint64_t* memory_table_range_query(MemoryTable* table, const BTreeRange* range, uint32_t key_column, uint32_t* result_count) {
+    (void)key_column;
     if (!table || !range || !result_count || !table->primary_index) {
         *result_count = 0;
         return NULL;
@@ -385,41 +388,16 @@ bool memory_storage_save(MemoryStorage* storage) {
 }
 
 MemoryStorage* memory_storage_load(const char* data_dir) {
-    DIR* dir = opendir(data_dir);
-    if (!dir) {
-        return memory_storage_load_file(data_dir);
-    }
-
+    if (!data_dir) return NULL;
+    
     MemoryStorage* storage = memory_storage_create();
-    if (!storage) {
-        closedir(dir);
+    if (!storage) return NULL;
+    
+    if (!memory_storage_enable_persistence(storage, data_dir)) {
+        memory_storage_destroy(storage);
         return NULL;
     }
-
-    storage->data_directory = string_duplicate(data_dir);
-    storage->persistence_enabled = true;
-
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (strstr(entry->d_name, ".btree") == NULL) continue;
-
-        char filepath[512];
-        snprintf(filepath, sizeof(filepath), "%s/%s", data_dir, entry->d_name);
-
-        char* table_name = strdup(entry->d_name);
-        char* ext = strstr(table_name, ".btree");
-        if (ext) *ext = '\0';
-
-        BTree* tree = btree_open(filepath);
-        if (tree) {
-            MemoryTable* table = memory_storage_create_table_from_btree(storage, table_name, tree);
-            if (!table) {
-                btree_close(tree);
-            }
-        }
-        free(table_name);
-    }
-    closedir(dir);
+    
     return storage;
 }
 
